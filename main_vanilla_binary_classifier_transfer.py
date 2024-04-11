@@ -26,8 +26,6 @@ def get_args():
     parser.add_argument('--eps', type=float, default=1e-8, help='learning rate (default: 1e-8)')
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--max_len', default=256, type=int)
-    
-    parser.add_argument('--paraphrase_type', default='lex_40_order_100', type=str)
     args = parser.parse_args()
     return args
 
