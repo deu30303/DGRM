@@ -11,19 +11,16 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import transformers
 from sklearn.metrics import roc_auc_score
+from transformers import AutoTokenizer, AutoModel
 from dataloader import *
-from transformers import AutoTokenizer, AdamW
-import time
+from detection_utils import *
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_source', default="xsum-data/open-generation-data")
-    parser.add_argument('--train_output_file', default="gpt2.jsonl_pp")
+    parser.add_argument('--train_output_file', default="chatgpt.jsonl_pp")
     parser.add_argument('--test_source', default="lfqa-data")
-    parser.add_argument('--test_output_file', default="gpt2.jsonl_pp")
-    parser.add_argument('--dim', default=768, type=int)
-    parser.add_argument('--lr', type=float, default=1e-5, help='learning rate (default: 1e-5)')
-    parser.add_argument('--eps', type=float, default=1e-8, help='learning rate (default: 1e-8)')
+    parser.add_argument('--test_output_file', default="chatgpt.jsonl_pp")
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--max_len', default=256, type=int)
     args = parser.parse_args()
@@ -41,11 +38,11 @@ def set_seed(seed):
 class Detector(torch.nn.Module):
     def __init__(self):
         super(Detector, self).__init__()
-        self.l1 = transformers.BertModel.from_pretrained("bert-base-uncased")
+        self.l1 = transformers.AutoModel.from_pretrained("roberta-base")
         self.l1.classifier = nn.Sequential()
-        self.pre_classifier = torch.nn.Linear(args.dim, args.dim)
-        self.dropout = torch.nn.Dropout(0.1)
-        self.classifier = torch.nn.Linear(args.dim, 1)
+        self.pre_classifier = torch.nn.Linear(768, 768)
+        self.dropout = torch.nn.Dropout(0.3)
+        self.classifier = torch.nn.Linear(768, 1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, input_ids, attention_mask, token_type_ids):
@@ -63,14 +60,16 @@ class Detector(torch.nn.Module):
         return output
     
 
+
 if __name__ == "__main__":
     args = get_args()
     set_seed(0)
 
-    tokenizer = transformers.BertTokenizer.from_pretrained("bert-base-uncased")
+
+    tokenizer = transformers.AutoTokenizer.from_pretrained("roberta-base")
     model = Detector()
     model.cuda()
-    optimizer = AdamW(model.parameters(), lr = args.lr,  eps = args.eps )
+    optimizer = AdamW(model.parameters(), lr = 1e-5,  eps = 1e-8 )
     
     train_data = []
     file_name_list = args.train_source.split('/')
@@ -78,10 +77,12 @@ if __name__ == "__main__":
     for data_name in file_name_list:
         file_dir = '{}/{}'.format(data_name, args.train_output_file)
         with open(file_dir, "r") as f:
-            train_data_temp = [json.loads(x) for x in f.read().strip().split("\n")]    
+            train_data_temp = [json.loads(x) for x in f.read().strip().split("\n")]
+            
         train_data += train_data_temp
         
-    test_data = []
+    test_data = [] 
+    
     file_name_list = args.test_source.split('/')
         
     for data_name in file_name_list:
@@ -92,10 +93,12 @@ if __name__ == "__main__":
         test_data += test_data_temp
         
 
+    
+    train_data = random.sample(train_data, int(1.0*len(train_data)))
     print(len(train_data), len(test_data))
 
-    training_set = GHData(args, train_data, tokenizer, args.max_len)
-    testing_set = GHData(args, test_data, tokenizer, args.max_len)
+    training_set = GHData(args.train_output_file, train_data, tokenizer, args.max_len)
+    testing_set = GHData(args.test_output_file, test_data, tokenizer, args.max_len)
     training_loader = DataLoader(training_set, batch_size =args.batch_size, shuffle=True, num_workers=0, drop_last=True)
     testing_loader = DataLoader(testing_set, batch_size =args.batch_size, shuffle=False, num_workers=0, drop_last=True)
     
@@ -104,6 +107,7 @@ if __name__ == "__main__":
     
     bce_criterion = nn.BCELoss()
     print(len(training_loader))
+    
     for idx, data in enumerate(training_loader):
         print(idx)
         batch_size = data[0].shape[0]
@@ -120,7 +124,7 @@ if __name__ == "__main__":
         
         
         model.zero_grad()
-        output = model(input_ids, attention_mask, None)
+        output = model(input_ids,  attention_mask, None)
         output_gen, output_gold = torch.split(output, batch_size*2)
         output = output.squeeze(1)
         output_gen = output_gen.squeeze(1)
@@ -131,7 +135,7 @@ if __name__ == "__main__":
 
         loss.backward()
         optimizer.step()
-   
+
 
     acc_gen = []
     acc_gold = []
@@ -166,8 +170,12 @@ if __name__ == "__main__":
         acc_gold.append(gold_z.detach().cpu())
         target_gold.append(gold_target.detach().cpu())
         acc_pp0.append(pp0_z.detach().cpu())
+        
+
 
         del gen_z, gold_z, pp0_z, gen_target, gold_target
+
+
 
     acc_gen = torch.cat(acc_gen).squeeze(1)
     target_gen = torch.cat(target_gen)
