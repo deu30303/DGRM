@@ -18,9 +18,9 @@ from detection_utils import *
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_source', default="xsum-data/open-generation-data")
-    parser.add_argument('--train_output_file', default="chatgpt.jsonl_pp")
+    parser.add_argument('--train_output_file', default="gpt3.jsonl_pp")
     parser.add_argument('--test_source', default="lfqa-data")
-    parser.add_argument('--test_output_file', default="chatgpt.jsonl_pp")
+    parser.add_argument('--test_output_file', default="gpt3.jsonl_pp")
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--max_len', default=256, type=int)
     args = parser.parse_args()
